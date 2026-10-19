@@ -2,6 +2,7 @@ from django.urls import pat
 import views
 
 urlpatterns = [
-    path('/', views.get_accounts, name='get_accounts'),
-    path('/<int:id>/', views.get_account, name='get_account'),
+    path('', views.get_accounts, name='get_accounts'),
+    path('create/', views.create_account, name='create_account'),
+        path('<int:pk>/', views.account_detail, name='account_detail'),
 ]

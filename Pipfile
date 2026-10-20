@@ -7,6 +7,8 @@ name = "pypi"
 mcp = "*"
 django = "*"
 djangorestframework = "*"
+python-dotenv = "*"
+httpx = "*"
 
 [dev-packages]
 

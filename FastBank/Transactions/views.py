@@ -13,107 +13,79 @@ from .serializers import TransactionSerializer
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_transfer(request):
+    serializer = TransactionSerializer(data=request.data)
+
+    if not serializer.is_valid():
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    from_account = serializer.validated_data['from_account']
+    to_account = serializer.validated_data['to_account']
+    amount = serializer.validated_data['amount']
+
+    if from_account.owner_id != request.user.id:
+        return Response(
+            {'error': 'You do not own the source account.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if from_account.pk == to_account.pk:
+        return Response(
+            {'error': 'Source and destination accounts must be different.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if amount <= 0:
+        return Response(
+            {'error': 'Transfer amount must be positive.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     with transaction.atomic():
-        serializer = TransactionSerializer(data=request.data)
+        locked_accounts = Account.objects.select_for_update().filter(
+            pk__in=[from_account.pk, to_account.pk]
+        ).order_by('pk')
 
-        if not serializer.is_valid():
+        accounts = {account.pk: account for account in locked_accounts}
+
+        from_account = accounts.get(from_account.pk)
+        to_account = accounts.get(to_account.pk)
+
+        if from_account is None or to_account is None:
             return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        from_account_id = serializer.validated_data['from_account'].id
-        to_account_id = serializer.validated_data['to_account'].id
-        amount = serializer.validated_data['amount']
-
-        # Prevent transfers to the same account
-        if from_account_id == to_account_id:
-            return Response(
-                {"error": "Cannot transfer to the same account"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Lock accounts in a consistent order
-        accounts = Account.objects.select_for_update().filter(
-            id__in=[from_account_id, to_account_id]
-        ).order_by('id')
-
-        accounts = {account.id: account for account in accounts}
-
-        if len(accounts) != 2:
-            return Response(
-                {"error": "One or both accounts not found"},
+                {'error': 'Source or destination account no longer exists.'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        from_account = accounts[from_account_id]
-        to_account = accounts[to_account_id]
-
-        # Validate amount
-        if amount <= 0:
+        if from_account.owner_id != request.user.id:
             return Response(
-                {"error": "Amount must be greater than zero"},
-                status=status.HTTP_400_BAD_REQUEST
+                {'error': 'You do not own the source account.'},
+                status=status.HTTP_403_FORBIDDEN
             )
 
-        # Check sufficient balance
         if from_account.balance < amount:
             return Response(
-                {"error": "Insufficient balance"},
+                {'error': 'Insufficient funds.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Perform transfer
         from_account.balance -= amount
         to_account.balance += amount
 
         from_account.save(update_fields=['balance'])
         to_account.save(update_fields=['balance'])
 
-        # Save transaction record using the verified accounts
-        serializer.save(
+        transfer = serializer.save(
             from_account=from_account,
             to_account=to_account
         )
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_201_CREATED
-        )
-
-    with transaction.atomic():#makes db ops all or nothing
-        serializer = TransactionSerializer(data=request.data)
-        if serializer.is_valid():
-            from_account_id = serializer.validated_data['from_account'].id
-            to_account_id = serializer.validated_data['to_account'].id
-            amount = serializer.validated_data['amount']
-
-            #check if accounts exists
-            try:
-                # Fetch the accounts from the database
-                from_account = Account.objects.select_for_update().get(id=from_account_id)
-                to_account = Account.objects.select_for_update().get(id=to_account_id)
-            except Account.DoesNotExist:
-                return Response(
-                    {"error": "Account not found"}, status=status.HTTP_404_NOT_FOUND)
-       
-            # Check if the from_account has sufficient balance
-            if from_account.balance < amount:
-                return Response({'error': 'Insufficient balance'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Perform the transfer
-            from_account.balance -= amount
-            to_account.balance += amount
-            
-            # Save the updated account balances
-            from_account.save()
-            to_account.save()
-            
-            # Save the transaction record
-            serializer.save()
-            
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    return Response(
+        TransactionSerializer(transfer).data,
+        status=status.HTTP_201_CREATED
+    )
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

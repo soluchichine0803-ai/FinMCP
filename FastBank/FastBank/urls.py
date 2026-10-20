@@ -16,11 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from FastBank.Transactions import views
+from Transactions import views as transaction_views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('Accounts.urls')),
     path('transactions/', include('Transactions.urls')),
-    path('transfers/', views.create_transfer, name='create_transfer')
+    path('transfer/', transaction_views.create_transfer, name='create_transfer'),
+    path('adminops/', include('Adminops.urls')),path('api-auth/', include('rest_framework.urls')),
 ]

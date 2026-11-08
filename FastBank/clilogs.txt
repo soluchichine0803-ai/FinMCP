@@ -1,0 +1,15 @@
+ADMIN
+in django shell
+user = User.objects.get(username="admin")
+user.set_password("admin")
+user.is_staff = True
+user.is_superuser = False
+user.save()
+
+USER
+in api POST field
+{
+    "username": "testcustomer",
+    "email": "test@example.com",
+    "password": "testpass123"
+}
